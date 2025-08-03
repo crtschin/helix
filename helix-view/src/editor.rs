@@ -465,6 +465,8 @@ pub struct LspConfig {
     pub auto_signature_help: bool,
     /// Display docs under signature help popup
     pub display_signature_help_docs: bool,
+    /// Display hover docs on idle timeout
+    pub display_idle_hover_docs: bool,
     /// Display inlay hints
     pub display_inlay_hints: bool,
     /// Maximum displayed length of inlay hints (excluding the added trailing `…`).
@@ -486,6 +488,7 @@ impl Default for LspConfig {
             display_messages: true,
             auto_signature_help: true,
             display_signature_help_docs: true,
+            display_idle_hover_docs: false,
             display_inlay_hints: false,
             inlay_hints_length_limit: None,
             snippets: true,

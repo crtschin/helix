@@ -28,7 +28,7 @@ use helix_view::{
 
 use crate::{
     compositor::{self, Compositor},
-    job::Callback,
+    job::{Callback, Jobs},
     ui::{self, overlay::overlaid, FileLocation, Picker, Popup, PromptEvent},
 };
 
@@ -1028,8 +1028,6 @@ pub fn signature_help(cx: &mut Context) {
 }
 
 pub fn hover(cx: &mut Context) {
-    use ui::lsp::hover::Hover;
-
     let (view, doc) = current!(cx.editor);
     if doc
         .language_servers_with_feature(LanguageServerFeature::Hover)
@@ -1041,46 +1039,7 @@ pub fn hover(cx: &mut Context) {
         return;
     }
 
-    let mut seen_language_servers = HashSet::new();
-    let mut futures: FuturesOrdered<_> = doc
-        .language_servers_with_feature(LanguageServerFeature::Hover)
-        .filter(|ls| seen_language_servers.insert(ls.id()))
-        .map(|language_server| {
-            let server_name = language_server.name().to_string();
-            // TODO: factor out a doc.position_identifier() that returns lsp::TextDocumentPositionIdentifier
-            let pos = doc.position(view.id, language_server.offset_encoding());
-            let request = language_server
-                .text_document_hover(doc.identifier(), pos, None)
-                .unwrap();
-
-            async move { anyhow::Ok((server_name, request.await?)) }
-        })
-        .collect();
-
-    cx.jobs.callback(async move {
-        let mut hovers: Vec<(String, lsp::Hover)> = Vec::new();
-
-        while let Some(response) = futures.next().await {
-            match response {
-                Ok((server_name, Some(hover))) => hovers.push((server_name, hover)),
-                Ok(_) => (),
-                Err(err) => log::error!("Error requesting hover: {err}"),
-            }
-        }
-
-        let call = move |editor: &mut Editor, compositor: &mut Compositor| {
-            if hovers.is_empty() {
-                editor.set_status("No hover results available.");
-                return;
-            }
-
-            // create new popup
-            let contents = Hover::new(hovers, editor.syn_loader.clone());
-            let popup = Popup::new(Hover::ID, contents).auto_close(true);
-            compositor.replace_or_push(Hover::ID, popup);
-        };
-        Ok(Callback::EditorCompositor(Box::new(call)))
-    });
+    compute_hover_results(cx.jobs, view, doc);
 }
 
 pub fn rename_symbol(cx: &mut Context) {
@@ -1262,6 +1221,55 @@ pub fn select_references_to_symbol_under_cursor(cx: &mut Context) {
             doc.set_selection(view.id, selection);
         },
     );
+}
+
+fn compute_hover_results(jobs: &mut Jobs, view: &mut View, doc: &mut Document) {
+    use ui::lsp::hover::Hover;
+    let view_id = view.id;
+    let doc_id = doc.id();
+    let mut seen_language_servers = HashSet::new();
+    let mut futures: FuturesOrdered<_> = doc
+        .language_servers_with_feature(LanguageServerFeature::Hover)
+        .filter(|ls| seen_language_servers.insert(ls.id()))
+        .map(|language_server| {
+            let server_name = language_server.name().to_string();
+            // TODO: factor out a doc.position_identifier() that returns lsp::TextDocumentPositionIdentifier
+            let pos = doc.position(view.id, language_server.offset_encoding());
+            let request = language_server
+                .text_document_hover(doc.identifier(), pos, None)
+                .unwrap();
+
+            async move { anyhow::Ok((server_name, request.await?)) }
+        })
+        .collect();
+
+    if futures.len() > 0 {
+        jobs.callback(async move {
+            let mut hovers: Vec<(String, lsp::Hover)> = Vec::new();
+
+            while let Some(response) = futures.next().await {
+                match response {
+                    Ok((server_name, Some(hover))) => hovers.push((server_name, hover)),
+                    Ok(_) => (),
+                    Err(err) => log::error!("Error requesting hover: {err}"),
+                }
+            }
+
+            let call = move |editor: &mut Editor, compositor: &mut Compositor| {
+                let (current_view, current_doc) = current!(editor);
+                if hovers.is_empty() {
+                    editor.set_status("No hover results available.");
+                    return;
+                }
+
+                // create new popup
+                let contents = Hover::new(hovers, editor.syn_loader.clone());
+                let popup = Popup::new(Hover::ID, contents).auto_close(true);
+                compositor.replace_or_push(Hover::ID, popup);
+            };
+            Ok(Callback::EditorCompositor(Box::new(call)))
+        });
+    }
 }
 
 pub fn compute_inlay_hints_for_all_views(editor: &mut Editor, jobs: &mut crate::job::Jobs) {

@@ -19,7 +19,7 @@ use helix_core::{
 };
 use helix_stdx::path;
 use helix_view::{
-    document::{DocumentInlayHints, DocumentInlayHintsId},
+    document::{DocumentInlayHints, DocumentInlayHintsId, Mode},
     editor::Action,
     handlers::lsp::SignatureHelpInvoked,
     theme::Style,
@@ -1223,6 +1223,36 @@ pub fn select_references_to_symbol_under_cursor(cx: &mut Context) {
     );
 }
 
+pub fn compute_doc_hints_for_cursor(cx: &mut Context) {
+    let config = cx.editor.config();
+    let (view, doc) = current!(cx.editor);
+
+    if !config.lsp.display_idle_hover_docs
+        || doc
+            .language_servers_with_feature(LanguageServerFeature::Hover)
+            .count()
+            == 0
+        || !(cx.editor.mode == Mode::Normal)
+    {
+        return;
+    }
+
+    let cursor_position = doc
+        .selection(view.id)
+        .primary()
+        .cursor(doc.text().slice(..));
+    let primary_character_is_alphanumeric = doc
+        .text()
+        .get_char(cursor_position)
+        .map(|c| c.is_alphanumeric() || c == '_')
+        .unwrap_or(false);
+    if !view.is_cursor_in_view(doc, config.scrolloff) || !primary_character_is_alphanumeric {
+        return;
+    }
+
+    compute_hover_results(cx.jobs, view, doc);
+}
+
 fn compute_hover_results(jobs: &mut Jobs, view: &mut View, doc: &mut Document) {
     use ui::lsp::hover::Hover;
     let view_id = view.id;
@@ -1257,6 +1287,18 @@ fn compute_hover_results(jobs: &mut Jobs, view: &mut View, doc: &mut Document) {
 
             let call = move |editor: &mut Editor, compositor: &mut Compositor| {
                 let (current_view, current_doc) = current!(editor);
+                // We only want to show the hover information when there is no other element in the
+                // editor that's better focused, i.e. insertion mode where the completion menu is
+                // relevant, or the info box that's shown mid-keychords.
+                if let Some(_) = editor.autoinfo {
+                    return;
+                } else if editor.mode != Mode::Normal
+                    || current_view.id != view_id
+                    || current_doc.id() != doc_id
+                {
+                    return;
+                }
+
                 if hovers.is_empty() {
                     editor.set_status("No hover results available.");
                     return;

@@ -1091,6 +1091,7 @@ impl EditorView {
 
     pub fn handle_idle_timeout(&mut self, cx: &mut commands::Context) -> EventResult {
         commands::compute_inlay_hints_for_all_views(cx.editor, cx.jobs);
+        commands::compute_doc_hints_for_cursor(cx);
 
         EventResult::Ignored(None)
     }

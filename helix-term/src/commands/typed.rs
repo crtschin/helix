@@ -1835,6 +1835,7 @@ fn tree_sitter_scopes(
     _args: Args,
     event: PromptEvent,
 ) -> anyhow::Result<()> {
+    use ui::lsp::hover::Hover;
     if event != PromptEvent::Validate {
         return Ok(());
     }
@@ -1851,8 +1852,8 @@ fn tree_sitter_scopes(
         let call: job::Callback = Callback::EditorCompositor(Box::new(
             move |editor: &mut Editor, compositor: &mut Compositor| {
                 let contents = ui::Markdown::new(contents, editor.syn_loader.clone());
-                let popup = Popup::new("hover", contents).auto_close(true);
-                compositor.replace_or_push("hover", popup);
+                let popup = Popup::new(Hover::ID, contents).auto_close(true);
+                compositor.replace_or_push(Hover::ID, popup);
             },
         ));
         Ok(call)
@@ -1868,6 +1869,7 @@ fn tree_sitter_highlight_name(
     _args: Args,
     event: PromptEvent,
 ) -> anyhow::Result<()> {
+    use ui::lsp::hover::Hover;
     if event != PromptEvent::Validate {
         return Ok(());
     }
@@ -1919,8 +1921,8 @@ fn tree_sitter_highlight_name(
         let call: job::Callback = Callback::EditorCompositor(Box::new(
             move |editor: &mut Editor, compositor: &mut Compositor| {
                 let content = ui::Markdown::new(content, editor.syn_loader.clone());
-                let popup = Popup::new("hover", content).auto_close(true);
-                compositor.replace_or_push("hover", popup);
+                let popup = Popup::new(Hover::ID, content).auto_close(true);
+                compositor.replace_or_push(Hover::ID, popup);
             },
         ));
         Ok(call)
@@ -2424,6 +2426,7 @@ fn tree_sitter_subtree(
     _args: Args,
     event: PromptEvent,
 ) -> anyhow::Result<()> {
+    use ui::lsp::hover::Hover;
     if event != PromptEvent::Validate {
         return Ok(());
     }
@@ -2444,8 +2447,8 @@ fn tree_sitter_subtree(
                 let call: job::Callback = Callback::EditorCompositor(Box::new(
                     move |editor: &mut Editor, compositor: &mut Compositor| {
                         let contents = ui::Markdown::new(contents, editor.syn_loader.clone());
-                        let popup = Popup::new("hover", contents).auto_close(true);
-                        compositor.replace_or_push("hover", popup);
+                        let popup = Popup::new(Hover::ID, contents).auto_close(true);
+                        compositor.replace_or_push(Hover::ID, popup);
                     },
                 ));
                 Ok(call)

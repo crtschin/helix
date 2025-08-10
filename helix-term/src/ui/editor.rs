@@ -14,14 +14,16 @@ use crate::{
 };
 
 use helix_core::{
+    chars::char_is_word,
     diagnostic::NumberOrString,
     graphemes::{next_grapheme_boundary, prev_grapheme_boundary},
     movement::Direction,
     syntax::{self, OverlayHighlights},
     text_annotations::TextAnnotations,
     unicode::width::UnicodeWidthStr,
-    visual_offset_from_block, Change, Position, Range, Selection, Transaction,
+    visual_offset_from_block, Change, Position, Range, Selection, Syntax, Transaction,
 };
+use helix_stdx::rope::{self, RopeSliceExt};
 use helix_view::{
     annotations::diagnostics::DiagnosticFilter,
     document::{Mode, SCRATCH_BUFFER_NAME},
@@ -154,7 +156,7 @@ impl EditorView {
                 self.terminal_focused,
             ));
             if let Some(overlay) = Self::highlight_focused_view_elements(view, doc, theme) {
-                overlays.push(overlay);
+                overlays.extend(overlay);
             }
         }
 
@@ -571,14 +573,67 @@ impl EditorView {
         view: &View,
         doc: &Document,
         theme: &Theme,
-    ) -> Option<OverlayHighlights> {
+    ) -> Option<Vec<OverlayHighlights>> {
         // Highlight matching braces
         let syntax = doc.syntax()?;
-        let highlight = theme.find_highlight_exact("ui.cursor.match")?;
+        let mut highlights = Vec::new();
+        if let Some(range) = Self::highlight_focused_matching_bracket(view, doc, syntax) {
+            let highlight = theme.find_highlight_exact("ui.cursor.match")?;
+            highlights.push(OverlayHighlights::single(highlight, range));
+        }
+        if let Some(ranges) = Self::highlight_focused_selection(view, doc) {
+            let highlight = theme.find_highlight_exact("ui.selection.primary")?;
+            highlights.push(OverlayHighlights::Homogeneous { highlight, ranges });
+        }
+        Some(highlights)
+    }
+
+    fn highlight_focused_selection(
+        view: &View,
+        doc: &Document,
+    ) -> Option<Vec<std::ops::Range<usize>>> {
+        let text = doc.text().slice(..);
+        let selection = doc.selection(view.id).primary();
+        let selected_chars = selection.slice(text).chars();
+        let selected: String = selected_chars.clone().collect();
+        let filtered_chars = selected_chars
+            .filter(|c| char_is_word(*c))
+            .collect::<String>();
+        let selected_text = selected.as_str();
+        if selected.len() <= 3 || selected.len() != filtered_chars.len() {
+            return None;
+        }
+
+        let regex = rope::RegexBuilder::new()
+            .syntax(rope::Config::new().case_insensitive(false).multi_line(true))
+            .build(selected_text)
+            .ok()?;
+        let highlighting_ranges: Vec<_> = regex
+            .find_iter(text.regex_input())
+            .filter_map(|m| {
+                let range = std::ops::Range {
+                    start: m.start(),
+                    end: m.end(),
+                };
+                if !selection.contains_range(&Range::new(range.start, range.end)) {
+                    return Some(range);
+                }
+                None
+            })
+            .collect();
+
+        Some(highlighting_ranges)
+    }
+
+    fn highlight_focused_matching_bracket(
+        view: &View,
+        doc: &Document,
+        syntax: &Syntax,
+    ) -> Option<std::ops::Range<usize>> {
         let text = doc.text().slice(..);
         let pos = doc.selection(view.id).primary().cursor(text);
         let pos = helix_core::match_brackets::find_matching_bracket(syntax, text, pos)?;
-        Some(OverlayHighlights::single(highlight, pos..pos + 1))
+        Some(pos..pos + 1)
     }
 
     pub fn tabstop_highlights(doc: &Document, theme: &Theme) -> Option<OverlayHighlights> {

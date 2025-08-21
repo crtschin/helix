@@ -286,7 +286,7 @@ impl<T: Component> Component for Popup<T> {
             EventResult::Ignored(fn_once) => {
                 match key {
                     // esc or ctrl-c aborts the completion and closes the menu
-                    key!(Esc) | ctrl!('c') => {
+                    key!(Esc) => {
                         let _ = self.contents.handle_event(event, cx);
                         EventResult::Consumed(Some(close_fn))
                     }

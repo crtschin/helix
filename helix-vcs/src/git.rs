@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use arc_swap::ArcSwap;
 use gix::filter::plumbing::driver::apply::Delay;
 use std::io::Read;
@@ -8,14 +8,13 @@ use std::sync::Arc;
 use gix::bstr::ByteSlice;
 use gix::diff::Rewrites;
 use gix::dir::entry::Status;
-use gix::objs::tree::EntryKind;
 use gix::sec::trust::DefaultForLevel;
 use gix::status::{
     index_worktree::Item,
     plumbing::index_as_worktree::{Change, EntryStatus},
     UntrackedFiles,
 };
-use gix::{Commit, ObjectId, Repository, ThreadSafeRepository};
+use gix::{Repository, ThreadSafeRepository};
 
 use crate::FileChange;
 
@@ -38,8 +37,34 @@ pub fn get_diff_base(file: &Path) -> Result<Vec<u8>> {
     let repo = open_repo(repo_dir)
         .context("failed to open git repo")?
         .to_thread_local();
-    let head = repo.head_commit()?;
-    let file_oid = find_file_in_commit(&repo, &head, &file)?;
+    let repo_dir = repo.workdir().context("repo has no worktree")?;
+    let rel_path = file.strip_prefix(repo_dir)?;
+
+    // If comparing relative to HEAD
+    // let tree = repo.head_commit()?.tree()?;
+    // let tree_entry = tree
+    //     .lookup_entry_by_path(rel_path)?
+    //     .context("file is untracked")?;
+    // let file_oid = match tree_entry.mode().kind() {
+    //     // not a file, everything is new, do not show diff
+    //     mode @ (EntryKind::Tree | EntryKind::Commit | EntryKind::Link) => {
+    //         bail!("entry at {} is not a file but a {mode:?}", file.display())
+    //     }
+    //     // found a file
+    //     EntryKind::Blob | EntryKind::BlobExecutable => {
+    //         Ok::<ObjectId, anyhow::Error>(tree_entry.object_id())
+    //     }
+    // }?;
+
+    // If comparing relative to INDEX
+    let index_file = repo
+        .index()
+        .context("no tree index")?
+        .into_owned_or_cloned();
+    let index_entry = index_file
+        .entry_by_path(rel_path.as_os_str().to_str().unwrap().into())
+        .context("file is untracked")?;
+    let file_oid = index_entry.id;
 
     let file_object = repo.find_object(file_oid)?;
     let data = file_object.detach().data;
@@ -198,22 +223,4 @@ fn status(repo: &Repository, f: impl Fn(Result<FileChange>) -> bool) -> Result<(
     }
 
     Ok(())
-}
-
-/// Finds the object that contains the contents of a file at a specific commit.
-fn find_file_in_commit(repo: &Repository, commit: &Commit, file: &Path) -> Result<ObjectId> {
-    let repo_dir = repo.workdir().context("repo has no worktree")?;
-    let rel_path = file.strip_prefix(repo_dir)?;
-    let tree = commit.tree()?;
-    let tree_entry = tree
-        .lookup_entry_by_path(rel_path)?
-        .context("file is untracked")?;
-    match tree_entry.mode().kind() {
-        // not a file, everything is new, do not show diff
-        mode @ (EntryKind::Tree | EntryKind::Commit | EntryKind::Link) => {
-            bail!("entry at {} is not a file but a {mode:?}", file.display())
-        }
-        // found a file
-        EntryKind::Blob | EntryKind::BlobExecutable => Ok(tree_entry.object_id()),
-    }
 }

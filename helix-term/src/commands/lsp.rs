@@ -1305,7 +1305,6 @@ fn compute_hover_results(jobs: &mut Jobs, view: &mut View, doc: &mut Document) {
                 }
 
                 if hovers.is_empty() {
-                    editor.set_status("No hover results available.");
                     return;
                 }
 

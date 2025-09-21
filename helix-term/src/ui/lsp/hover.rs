@@ -181,3 +181,17 @@ fn hover_contents_to_string(contents: lsp::HoverContents) -> String {
         lsp::HoverContents::Markup(contents) => contents.value,
     }
 }
+
+pub fn hover_contents_is_empty(contents: &lsp::HoverContents) -> bool {
+    fn marked_string_is_empty(contents: &lsp::MarkedString) -> bool {
+        match contents {
+            lsp::MarkedString::String(contents) => contents.is_empty(),
+            lsp::MarkedString::LanguageString(string) => string.value.is_empty(),
+        }
+    }
+    match contents {
+        lsp::HoverContents::Scalar(contents) => marked_string_is_empty(contents),
+        lsp::HoverContents::Array(contents) => contents.into_iter().all(marked_string_is_empty),
+        lsp::HoverContents::Markup(contents) => contents.value.is_empty(),
+    }
+}

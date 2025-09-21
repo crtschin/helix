@@ -29,7 +29,10 @@ use helix_view::{
 use crate::{
     compositor::{self, Compositor},
     job::{Callback, Jobs},
-    ui::{self, overlay::overlaid, FileLocation, Picker, Popup, PromptEvent},
+    ui::{
+        self, lsp::hover::hover_contents_is_empty, overlay::overlaid, FileLocation, Picker, Popup,
+        PromptEvent,
+    },
 };
 
 use std::{cmp::Ordering, collections::HashSet, fmt::Display, future::Future, path::Path};
@@ -1284,7 +1287,11 @@ fn compute_hover_results(jobs: &mut Jobs, view: &mut View, doc: &mut Document) {
 
             while let Some(response) = futures.next().await {
                 match response {
-                    Ok((server_name, Some(hover))) => hovers.push((server_name, hover)),
+                    Ok((server_name, Some(hover))) => {
+                        if !hover_contents_is_empty(&hover.contents) {
+                            hovers.push((server_name, hover));
+                        }
+                    }
                     Ok(_) => (),
                     Err(err) => log::error!("Error requesting hover: {err}"),
                 }

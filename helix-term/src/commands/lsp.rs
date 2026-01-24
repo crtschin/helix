@@ -14,8 +14,8 @@ use tui::{text::Span, widgets::Row};
 use super::{align_view, push_jump, Align, Context, Editor};
 
 use helix_core::{
-    chars::char_is_word, diagnostic::DiagnosticProvider, syntax::config::LanguageServerFeature,
-    text_annotations::InlineAnnotation, Selection, Uri,
+    diagnostic::DiagnosticProvider, syntax::config::LanguageServerFeature,
+    text_annotations::InlineAnnotation, Selection, Uri, Rope,
 };
 use helix_stdx::path;
 use helix_view::{
@@ -35,7 +35,9 @@ use crate::{
     },
 };
 
-use std::{cmp::Ordering, collections::HashSet, fmt::Display, future::Future, path::Path};
+use std::{
+    cmp::Ordering, collections::HashSet, fmt::Display, future::Future, path::Path, sync::Arc,
+};
 
 /// Gets the first language server that is attached to a document which supports a specific feature.
 /// If there is no configured language server that supports the feature, this displays a status message.
@@ -1036,7 +1038,20 @@ pub fn signature_help(cx: &mut Context) {
         .trigger_signature_help(SignatureHelpInvoked::Manual, cx.editor)
 }
 
+enum HoverDisplay {
+    Popup,
+    File,
+}
+
 pub fn hover(cx: &mut Context) {
+    hover_impl(cx, HoverDisplay::Popup)
+}
+
+pub fn goto_hover(cx: &mut Context) {
+    hover_impl(cx, HoverDisplay::File)
+}
+
+fn hover_impl(cx: &mut Context, hover_action: HoverDisplay) {
     let (view, doc) = current!(cx.editor);
     if doc
         .language_servers_with_feature(LanguageServerFeature::Hover)
@@ -1047,7 +1062,7 @@ pub fn hover(cx: &mut Context) {
             .set_error("No configured language server supports hover");
         return;
     }
-    compute_hover_results(cx.jobs, view, doc);
+    compute_hover_results(cx.jobs, view, doc, hover_action);
 }
 
 pub fn rename_symbol(cx: &mut Context) {
@@ -1258,10 +1273,10 @@ pub fn compute_doc_hints_for_cursor(cx: &mut Context) {
         return;
     }
 
-    compute_hover_results(cx.jobs, view, doc);
+    compute_hover_results(cx.jobs, view, doc, HoverDisplay::Popup);
 }
 
-fn compute_hover_results(jobs: &mut Jobs, view: &mut View, doc: &mut Document) {
+fn compute_hover_results(jobs: &mut Jobs, view: &mut View, doc: &mut Document, hover_action: HoverDisplay) {
     use ui::lsp::hover::Hover;
     let view_id = view.id;
     let doc_id = doc.id();
@@ -1315,12 +1330,31 @@ fn compute_hover_results(jobs: &mut Jobs, view: &mut View, doc: &mut Document) {
                     return;
                 }
 
-                // create new popup
-                let contents = Hover::new(hovers, editor.syn_loader.clone());
-                let popup = Popup::new(Hover::ID, contents)
-                    .auto_close(true)
-                    .capture_scroll_keys(false);
-                compositor.replace_or_push(Hover::ID, popup);
+                let hover = Hover::new(hovers, editor.syn_loader.clone());
+
+                match hover_action {
+                    HoverDisplay::Popup => {
+                        let popup = Popup::new(Hover::ID, hover)
+                            .auto_close(true)
+                            .capture_scroll_keys(false);
+                        compositor.replace_or_push(Hover::ID, popup);
+                    }
+                    HoverDisplay::File => {
+                        editor.new_file_from_document(
+                            Action::Replace,
+                            Document::from(
+                                Rope::from(hover.content_string()),
+                                None,
+                                Arc::clone(&editor.config),
+                                Arc::clone(&editor.syn_loader),
+                            ),
+                        );
+                        let hover_doc = doc_mut!(editor);
+
+                        let _ = hover_doc
+                            .set_language_by_language_id("markdown", &editor.syn_loader.load());
+                    }
+                }
             };
             Ok(Callback::EditorCompositor(Box::new(call)))
         });

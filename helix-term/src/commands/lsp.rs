@@ -1252,7 +1252,7 @@ pub fn compute_doc_hints_for_cursor(cx: &mut Context) {
     let primary_character_is_alphanumeric = doc
         .text()
         .get_char(cursor_position)
-        .map(|c| char_is_word(c) || c == '<' || c == '>')
+        .map(|c| !c.is_whitespace() && !c.is_control())
         .unwrap_or(false);
     if !view.is_cursor_in_view(doc, config.scrolloff) || !primary_character_is_alphanumeric {
         return;

@@ -1317,7 +1317,9 @@ fn compute_hover_results(jobs: &mut Jobs, view: &mut View, doc: &mut Document) {
 
                 // create new popup
                 let contents = Hover::new(hovers, editor.syn_loader.clone());
-                let popup = Popup::new(Hover::ID, contents).auto_close(true);
+                let popup = Popup::new(Hover::ID, contents)
+                    .auto_close(true)
+                    .capture_scroll_keys(false);
                 compositor.replace_or_push(Hover::ID, popup);
             };
             Ok(Callback::EditorCompositor(Box::new(call)))

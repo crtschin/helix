@@ -37,6 +37,7 @@ pub struct Popup<T: Component> {
     scroll_half_pages: usize,
     auto_close: bool,
     ignore_escape_key: bool,
+    capture_scroll_keys: bool,
     id: &'static str,
     has_scrollbar: bool,
 }
@@ -51,6 +52,7 @@ impl<T: Component> Popup<T> {
             scroll_half_pages: 0,
             auto_close: false,
             ignore_escape_key: false,
+            capture_scroll_keys: true,
             id,
             has_scrollbar: true,
         }
@@ -92,6 +94,14 @@ impl<T: Component> Popup<T> {
     /// would be required to exit insert mode.
     pub fn ignore_escape_key(mut self, ignore: bool) -> Self {
         self.ignore_escape_key = ignore;
+        self
+    }
+
+    /// Controls whether the popup captures PageUp/PageDown and Ctrl-j/Ctrl-k
+    /// for scrolling its contents. When set to `false`, these keys are ignored
+    /// by the popup and passed through to the editor. Defaults to `true`.
+    pub fn capture_scroll_keys(mut self, capture: bool) -> Self {
+        self.capture_scroll_keys = capture;
         self
     }
 
@@ -290,11 +300,11 @@ impl<T: Component> Component for Popup<T> {
                         let _ = self.contents.handle_event(event, cx);
                         EventResult::Consumed(Some(close_fn))
                     }
-                    key!(PageDown) | ctrl!('j') => {
+                    (key!(PageDown) | ctrl!('j')) if self.capture_scroll_keys => {
                         self.scroll_half_page_down();
                         EventResult::Consumed(None)
                     }
-                    key!(PageUp) | ctrl!('k') => {
+                    (key!(PageUp) | ctrl!('k')) if self.capture_scroll_keys => {
                         self.scroll_half_page_up();
                         EventResult::Consumed(None)
                     }

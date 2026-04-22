@@ -1526,6 +1526,12 @@ fn goto_file_impl(cx: &mut Context, action: Action) {
         if path.is_dir() {
             let picker = ui::file_picker(cx.editor, path.into());
             cx.push_layer(Box::new(overlaid(picker)));
+        } else if is_html_path(path) {
+            if let Ok(url) = Url::from_file_path(path) {
+                cx.jobs.callback(crate::open_external_url_callback(url));
+            } else if let Err(e) = cx.editor.open(path, action) {
+                cx.editor.set_error(format!("Open file failed: {:?}", e));
+            }
         } else if let Err(e) = cx.editor.open(path, action) {
             cx.editor.set_error(format!("Open file failed: {:?}", e));
         }
@@ -1588,10 +1594,14 @@ fn open_url_in_callback(
 /// Returns whether a URL should opened externally.
 ///
 /// Non-`file` URLs always open externally. `file` URLs are opened externally
-/// only when the target looks like a binary file (a non-textual file that can't
-/// be viewed in helix).
+/// when the target looks like a binary file (a non-textual file that can't
+/// be viewed in helix) or when the target is an HTML file.
 fn should_open_url_externally(url: &Url) -> bool {
     if url.scheme() != "file" {
+        return true;
+    }
+
+    if is_html_path(Path::new(url.path())) {
         return true;
     }
 
@@ -1603,6 +1613,14 @@ fn should_open_url_externally(url: &Url) -> bool {
     });
 
     matches!(content_type, Ok(content_inspector::ContentType::BINARY))
+}
+
+/// Returns true if the path has an HTML file extension (.html or .htm).
+fn is_html_path(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("html" | "htm")
+    )
 }
 
 fn extend_word_impl<F>(cx: &mut Context, extend_fn: F)

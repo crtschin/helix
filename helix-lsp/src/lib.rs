@@ -481,6 +481,7 @@ pub enum MethodCall {
     Other(String, jsonrpc::Params),
     WorkspaceDiagnosticRefresh,
     ShowMessageRequest(lsp::ShowMessageRequestParams),
+    CodeLensRefresh,
 }
 
 impl MethodCall {
@@ -517,6 +518,7 @@ impl MethodCall {
                 let params: lsp::ShowMessageRequestParams = params.parse()?;
                 Self::ShowMessageRequest(params)
             }
+            lsp::request::CodeLensRefresh::METHOD => Self::CodeLensRefresh,
             _ => Self::Other(method.to_owned(), params),
         };
         Ok(request)

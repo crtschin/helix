@@ -403,6 +403,7 @@ impl Client {
                         | CallHierarchyServerCapability::Options(_)
                 )
             ),
+            LanguageServerFeature::CodeLens => capabilities.code_lens_provider.is_some(),
         }
     }
 
@@ -623,6 +624,9 @@ impl Client {
                     diagnostic: Some(lsp::DiagnosticWorkspaceClientCapabilities {
                         refresh_support: Some(true),
                     }),
+                    code_lens: Some(lsp::CodeLensWorkspaceClientCapabilities {
+                        refresh_support: Some(true),
+                    }),
                     ..Default::default()
                 }),
                 text_document: Some(lsp::TextDocumentClientCapabilities {
@@ -732,6 +736,9 @@ impl Client {
                             value_set: Some(lsp::SymbolKind::all()),
                         }),
                         hierarchical_document_symbol_support: Some(false),
+                        ..Default::default()
+                    }),
+                    code_lens: Some(lsp::CodeLensClientCapabilities {
                         ..Default::default()
                     }),
                     ..Default::default()
@@ -1723,6 +1730,34 @@ impl Client {
         self.notify::<lsp::notification::DidChangeWatchedFiles>(lsp::DidChangeWatchedFilesParams {
             changes,
         })
+    }
+
+    pub fn code_lens(
+        &self,
+        text_document: lsp::TextDocumentIdentifier,
+    ) -> Option<impl Future<Output = Result<Option<Vec<lsp::CodeLens>>>>> {
+        if !self.supports_feature(LanguageServerFeature::CodeLens) {
+            return None;
+        }
+
+        let params = lsp::CodeLensParams {
+            text_document,
+            work_done_progress_params: lsp::WorkDoneProgressParams::default(),
+            partial_result_params: lsp::PartialResultParams::default(),
+        };
+
+        Some(self.call::<lsp::request::CodeLensRequest>(params))
+    }
+
+    pub fn resolve_code_lens(
+        &self,
+        params: lsp::CodeLens,
+    ) -> Option<impl Future<Output = Result<lsp::CodeLens>>> {
+        if !self.supports_feature(LanguageServerFeature::CodeLens) {
+            return None;
+        }
+
+        Some(self.call::<lsp::request::CodeLensResolve>(params))
     }
 
     // Everything below is explicitly extensions used for handling non standard lsp commands

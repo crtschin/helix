@@ -150,3 +150,47 @@ fn symlink_to_git_repo() {
     assert_eq!(git::get_diff_base(&file_link).unwrap(), contents);
     assert_eq!(git::get_diff_base(&file).unwrap(), contents);
 }
+
+/// Untracked files must be reported after every tracked change, no matter where the status
+/// walk finds them.
+#[test]
+fn untracked_files_come_last() {
+    use std::sync::Mutex;
+
+    use crate::FileChange;
+
+    let temp_git = empty_git_repo();
+
+    let tracked = temp_git.path().join("b_tracked.txt");
+    File::create(&tracked).unwrap().write_all(b"foo").unwrap();
+    create_commit(temp_git.path(), true);
+    File::create(&tracked).unwrap().write_all(b"bar").unwrap();
+
+    // Sorts before the tracked file, so the status walk yields it first.
+    let untracked = temp_git.path().join("a_untracked.txt");
+    File::create(&untracked).unwrap().write_all(b"foo").unwrap();
+
+    let changes = Mutex::new(Vec::new());
+    git::for_each_changed_file(temp_git.path(), |change| {
+        let change = change.unwrap();
+        let name = change.path().file_name().unwrap().to_owned();
+        changes
+            .lock()
+            .unwrap()
+            .push((matches!(change, FileChange::Untracked { .. }), name));
+        true
+    })
+    .unwrap();
+
+    let changes = changes.into_inner().unwrap();
+    assert_eq!(
+        changes
+            .iter()
+            .map(|(untracked, name)| (*untracked, name.to_string_lossy().into_owned()))
+            .collect::<Vec<_>>(),
+        vec![
+            (false, "b_tracked.txt".to_string()),
+            (true, "a_untracked.txt".to_string()),
+        ]
+    );
+}

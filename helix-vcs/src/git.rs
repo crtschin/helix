@@ -189,6 +189,10 @@ fn status(repo: &Repository, f: impl Fn(Result<FileChange>) -> bool) -> Result<(
 
     let status_iter = status_platform.into_index_worktree_iter(empty_patterns)?;
 
+    // Untracked files are held back and emitted after every tracked change so that consumers
+    // (the changed file picker) list the two groups separately.
+    let mut untracked = Vec::new();
+
     for item in status_iter {
         let Ok(item) = item.map_err(|err| f(Err(err.into()))) else {
             continue;
@@ -229,6 +233,16 @@ fn status(repo: &Repository, f: impl Fn(Result<FileChange>) -> bool) -> Result<(
             },
             _ => continue,
         };
+        if matches!(change, FileChange::Untracked { .. }) {
+            untracked.push(change);
+            continue;
+        }
+        if !f(Ok(change)) {
+            return Ok(());
+        }
+    }
+
+    for change in untracked {
         if !f(Ok(change)) {
             break;
         }
